@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body {
+  @apply bg-bg text-txt font-sans antialiased;
+  font-size: 13px;
+  -webkit-tap-highlight-color: transparent;
+}
+.num { @apply font-mono; font-variant-numeric: tabular-nums; }
+.up { @apply text-up; }
+.down { @apply text-down; }
+.panel { @apply bg-panel border border-line; }
+.btn { @apply inline-flex items-center justify-center gap-1.5 rounded px-3 h-8 text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed; }
+.btn-primary { @apply btn bg-accent text-white hover:bg-[#1e53e5]; }
+.btn-ghost { @apply btn text-txt hover:bg-hover; }
+.chip { @apply inline-flex items-center rounded-full border border-line px-2.5 h-7 text-xs text-mute hover:text-txt hover:border-mute transition-colors; }
+.chip-on { @apply border-accent text-txt bg-accent/15; }
+.input { @apply w-full h-9 rounded bg-panel2 border border-line px-3 text-txt placeholder:text-mute outline-none focus:border-accent; }
+.label { @apply text-[11px] uppercase tracking-wider text-mute; }
+.scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
+.scroll-thin { scrollbar-width: thin; scrollbar-color: #2a2e39 transparent; }
+
+@keyframes flash-up { from { background: rgba(8,153,129,.28); } to { background: transparent; } }
+@keyframes flash-down { from { background: rgba(242,54,69,.28); } to { background: transparent; } }
+.flash-up { animation: flash-up .9s ease-out; }
+.flash-down { animation: flash-down .9s ease-out; }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
