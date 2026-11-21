@@ -4,20 +4,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: '#0b0e14',
-        panel: '#131722',
-        panel2: '#1e222d',
-        line: '#2a2e39',
-        hover: '#2a2e39',
-        txt: '#d1d4dc',
-        mute: '#787b86',
+        bg: '#0b0b0b',
+        panel: '#121212',
+        panel2: '#1a1a1a',
+        line: '#262626',
+        hover: '#222222',
+        txt: '#dbdbdb',
+        mute: '#8b8b8b',
         up: '#089981',
         down: '#f23645',
         accent: '#2962ff',
         warn: '#f5a623',
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'Trebuchet MS', 'Roboto', 'Ubuntu', 'sans-serif'],
+        sans: ['Roboto', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Helvetica Neue', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
     },

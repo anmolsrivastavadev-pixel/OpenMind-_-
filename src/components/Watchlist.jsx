@@ -45,7 +45,7 @@ export default function Watchlist({ className = '' }) {
     <aside className={`flex flex-col min-h-0 bg-panel ${className}`}>
       <div className="flex items-center justify-between px-3 h-10 border-b border-line shrink-0">
         <span className="font-semibold text-white">Watchlist</span>
-        <span className="text-[11px] text-mute">{Object.keys(m.state.models).length} models</span>
+        <span className="text-[11px] text-mute">{Object.keys(m.s.models).length} models</span>
       </div>
       <div className="p-2 border-b border-line shrink-0">
         <input className="input h-8" placeholder="Search symbol or model" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -56,8 +56,8 @@ export default function Watchlist({ className = '' }) {
         <span className="text-right w-[62px]">Chg%</span>
       </div>
       <div className="flex-1 overflow-y-auto scroll-thin">
-        {Object.values(m.state.companies).map((c) => {
-          const models = c.modelIds.map((id) => m.state.models[id]).filter((x) => match(x.name, x.ticker, c.name, c.ticker));
+        {Object.values(m.s.companies).map((c) => {
+          const models = c.modelIds.map((id) => m.s.models[id]).filter((x) => match(x.name, x.ticker, c.name, c.ticker));
           if (!models.length && !match(c.name, c.ticker)) return null;
           return (
             <div key={c.id} className="border-b border-line/60">

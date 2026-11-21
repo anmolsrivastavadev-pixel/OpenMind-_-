@@ -1,5 +1,6 @@
-// Market clock: all calendar logic happens in the market's fixed time zone.
-import { MARKET } from './config.js';
+// Market clock. The exchange runs on ONE clock (cfg.tz, from market_config)
+// so everyone shares the same prices; the UI shows every time in the
+// viewer's own local time zone.
 
 const fmtCache = new Map();
 function partsFormatter(tz) {
@@ -21,124 +22,87 @@ function partsFormatter(tz) {
   }
   return fmtCache.get(tz);
 }
-
 const WD = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
-/** Wall-clock parts of `date` in the market time zone. */
-export function marketParts(date = new Date(), tz = MARKET.timeZone) {
+export const localTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+export function zonedParts(date, tz) {
   const p = {};
   for (const { type, value } of partsFormatter(tz).formatToParts(date)) p[type] = value;
-  return {
-    year: +p.year,
-    month: +p.month,
-    day: +p.day,
-    hour: +p.hour,
-    minute: +p.minute,
-    second: +p.second,
-    weekday: WD[p.weekday],
-  };
+  return { year: +p.year, month: +p.month, day: +p.day, hour: +p.hour, minute: +p.minute, second: +p.second, weekday: WD[p.weekday] };
 }
 
-/** "YYYY-MM-DD" in the market time zone. */
-export function marketDate(date = new Date()) {
-  const p = marketParts(date);
+export const ymd = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+/** Exchange calendar day "YYYY-MM-DD". */
+export function exchangeDate(cfg, date = new Date()) {
+  const p = zonedParts(date, cfg.tz);
   return ymd(p.year, p.month, p.day);
 }
 
-export function ymd(y, m, d) {
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-/**
- * Market wall-clock time encoded as a UTC unix timestamp (seconds).
- * Charts render UTC, so this makes every chart show market-local time.
- */
-export function wallSeconds(date = new Date()) {
-  const p = marketParts(date);
+/** Wall-clock time in `tz` encoded as UTC seconds (charts render UTC). */
+export function wallSeconds(date, tz = localTz()) {
+  const p = zonedParts(date, tz);
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) / 1000;
 }
 
-/** Add `n` calendar days to a "YYYY-MM-DD" string. */
-export function addDays(dateStr, n) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const t = new Date(Date.UTC(y, m - 1, d + n));
-  return ymd(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
-}
-
-export function weekdayOf(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-}
-
-export const isTradingDay = (dateStr) => {
-  const wd = weekdayOf(dateStr);
-  return wd >= 1 && wd <= 5;
-};
-
-/**
- * Real market status from the clock.
- *   open        Mon–Fri 08:00–20:00
- *   afterhours  Mon–Thu after close, Tue–Fri before open
- *   weekend     Fri 20:00 → Mon 08:00 (votes queue for Monday's gap)
- */
-export function realStatus(date = new Date()) {
-  const p = marketParts(date);
+/** open | afterhours | weekend, from the exchange clock. */
+export function marketStatus(cfg, date = new Date()) {
+  if (cfg.force_status) return cfg.force_status;
+  const p = zonedParts(date, cfg.tz);
   const mins = p.hour * 60 + p.minute;
-  const open = MARKET.openHour * 60;
-  const close = MARKET.closeHour * 60;
+  const open = cfg.open_hour * 60;
+  const close = cfg.close_hour * 60;
   const wd = p.weekday;
-  const weekday = wd >= 1 && wd <= 5;
-  if (weekday && mins >= open && mins < close) return 'open';
+  if (wd >= 1 && wd <= 5 && mins >= open && mins < close) return 'open';
   if (wd === 6 || wd === 0) return 'weekend';
   if (wd === 5 && mins >= close) return 'weekend';
   if (wd === 1 && mins < open) return 'weekend';
   return 'afterhours';
 }
 
-/** Seconds until the next open/close transition (real clock). */
-export function secondsToNextTransition(date = new Date()) {
-  const p = marketParts(date);
-  const nowMin = p.weekday * 1440 + p.hour * 60 + p.minute;
-  const nowSec = nowMin * 60 + p.second;
-  const marks = [];
-  for (let d = 1; d <= 5; d++) {
-    marks.push(d * 1440 + MARKET.openHour * 60, d * 1440 + MARKET.closeHour * 60);
-  }
-  const WEEK = 7 * 1440;
+/** Instant (Date) of the next open or close. */
+export function nextTransition(cfg, date = new Date()) {
+  const p = zonedParts(date, cfg.tz);
+  const nowSec = (p.weekday * 1440 + p.hour * 60 + p.minute) * 60 + p.second;
   let best = Infinity;
-  for (const m of marks) {
-    let diff = m * 60 - nowSec;
-    if (diff <= 0) diff += WEEK * 60;
-    best = Math.min(best, diff);
+  for (let d = 1; d <= 5; d++) {
+    for (const h of [cfg.open_hour, cfg.close_hour]) {
+      let diff = (d * 1440 + h * 60) * 60 - nowSec;
+      if (diff <= 0) diff += 7 * 86400;
+      best = Math.min(best, diff);
+    }
   }
-  return best;
+  return new Date(date.getTime() + best * 1000);
 }
 
 export function formatCountdown(sec) {
   sec = Math.max(0, Math.floor(sec));
   const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  const hh = String(h).padStart(2, '0');
-  const mm = String(m).padStart(2, '0');
-  const ss = String(s).padStart(2, '0');
-  return d > 0 ? `${d}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+  const h = String(Math.floor((sec % 86400) / 3600)).padStart(2, '0');
+  const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return d > 0 ? `${d}d ${h}:${m}:${s}` : `${h}:${m}:${s}`;
 }
 
-/** Most recent N trading days up to and including `endDate`. */
-export function tradingDaysBack(endDate, n) {
-  const out = [];
-  let d = endDate;
-  while (out.length < n) {
-    if (isTradingDay(d)) out.unshift(d);
-    d = addDays(d, -1);
-  }
-  return out;
+/** Exchange hours rendered in the viewer's local time, e.g. "6:30 PM – 6:30 AM". */
+export function localHours(cfg, date = new Date()) {
+  const offset = wallSeconds(date, cfg.tz) - date.getTime() / 1000; // exchange UTC offset (s)
+  const p = zonedParts(date, cfg.tz);
+  const at = (h) => new Date((Date.UTC(p.year, p.month - 1, p.day, h) / 1000 - offset) * 1000);
+  const f = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return `${f(at(cfg.open_hour))} – ${f(at(cfg.close_hour))}`;
 }
 
-/** Wall-clock seconds of `dateStr` at hh:mm (market-local, UTC-encoded). */
-export function wallAt(dateStr, hour, minute = 0) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return Date.UTC(y, m - 1, d, hour, minute) / 1000;
+export function shortTzName(tz, date = new Date()) {
+  const part = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
+    .formatToParts(date)
+    .find((x) => x.type === 'timeZoneName');
+  return part?.value ?? tz;
+}
+
+/** Seconds until midnight on the exchange calendar (next vote day). */
+export function secondsToExchangeMidnight(cfg, date = new Date()) {
+  const p = zonedParts(date, cfg.tz);
+  return 86400 - (p.hour * 3600 + p.minute * 60 + p.second);
 }

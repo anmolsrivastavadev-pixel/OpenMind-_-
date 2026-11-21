@@ -1,52 +1,72 @@
 # AI Market
 
-A stock-market-style app where people vote on AI models and the votes move the prices.
-TradingView-style dark UI. **All money is virtual.** Model names are fictional.
+A stock-market-style app where people vote on real AI models (GPT-5.2, Claude Opus 5.5, Gemini 3 Pro, …)
+and **their votes move the prices**. TradingView-style dark UI. **All money is virtual.**
 
-## Phase 1 prototype (this branch)
+Nothing is simulated: there are no bot votes and no fake price history. Every model lists at $100.00
+and moves only when real signed-in users vote.
 
-Runs entirely in the browser with simulated data so the UI can be reviewed with no backend.
+## Stack
+- **Frontend**: React + Vite + Tailwind + TradingView Lightweight Charts, deployed on **Vercel**
+- **Backend**: **Supabase**. Postgres holds all logic (`supabase/migrations`), Auth handles accounts,
+  and Realtime pushes price changes to every browser.
+- **Price engine**: `public.market_tick()`, run every 5 s by `pg_cron` inside Postgres. No server to host.
 
+## Deploy (about 10 minutes)
+1. Create a project at supabase.com.
+2. Link it and push the schema and data:
+   ```bash
+   npx supabase login
+   npx supabase link --project-ref <your-project-ref>
+   npx supabase db push            # tables, functions, 5-second cron job
+   psql "<your db connection string>" -f supabase/seed.sql   # companies + models
+   ```
+   (Or paste the two migration files and `seed.sql` into the Supabase SQL editor, in order.)
+3. Optional bot protection: Supabase → Authentication → Attack Protection → enable CAPTCHA (Cloudflare
+   Turnstile), and set `VITE_TURNSTILE_SITE_KEY`.
+4. Vercel: import this repo, framework **Vite**, and set the env vars from `.env.example`
+   (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`). Add a rewrite of all paths to `/index.html` (already in `vercel.json`).
+5. Supabase → Authentication → URL Configuration: set the Site URL to your Vercel domain.
+
+## Local development
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm test         # price engine / market clock tests
+npx supabase start      # local Postgres/Auth/Realtime (Docker)
+cp .env.example .env.local   # use the API URL + anon key printed by `supabase start`
+npm run dev
+npm test                # integration tests against the local Supabase
 ```
 
-What works:
-- **Market home**: watchlist (companies + models, live price and % change), company index strip,
-  top gainers/losers, market status badge with countdown, after-hours/weekend sentiment table.
-- **Model page** (TradingView layout): watchlist | candlestick + volume chart (1D/1W/1M/3M,
-  crosshair, OHLC legend) | vote panel, sentiment meter, buy/sell box.
-- **Company page**: weighted index chart, model table, aggregated sentiment.
-- **Voting**: Great +2 … Terrible −2, optional tags, one vote per model per day,
-  account-age weighting (0.25× under 1 day → 1× after 30 days), 10 votes/min rate limit.
-- **Market hours** 8:00 AM–8:00 PM ET, Mon–Fri. Closed: price locked, votes queue, and the
-  next open applies them as one gap capped at ±15%. Weekend votes all go into Monday's gap.
-- **Accounts** (local only): signup with honeypot + arithmetic bot check, login, profile with streak.
-- Simulated crowd votes run every 2 s so prices move on their own.
-- Buy/sell with $10,000 virtual cash is already wired as a preview (Phase 3 adds portfolio and leaderboard pages).
-
-**Demo clock** (top bar, or Profile on mobile): force *open*, *after-hours* or *weekend* to see each
-state without waiting. Switching from closed to open runs the real opening-gap logic.
-Profile also has "Age account" buttons to check vote weighting.
-
-## Code map
-
-| Path | What |
+## How it works
+| Rule | Where |
 | --- | --- |
-| `src/engine/config.js` | Market hours, time zone, rating weights, price/gap constants |
-| `src/engine/clock.js` | Market-time-zone calendar, status, countdown |
-| `src/engine/pricing.js` | Tick move `1.2% × tanh(net/300)`, gap `15% × tanh(net/15000)` |
-| `src/engine/engine.js` | Tick job, 8 PM close, 8 AM open/gap, votes, trades, candles |
-| `src/engine/seed.js` | Companies, fictional models, ~3 months of generated history |
-| `supabase/schema.sql` | Postgres schema for the real backend |
+| One vote per user per model per day (exchange calendar day) | `unique(user_id, model_id, date)` + `cast_vote()` |
+| Ratings Great +2 … Terrible −2, optional tags | `cast_vote()` |
+| New accounts count less: 0.25× (<1 day), 0.5× (<7), 0.8× (<30), then 1× | `age_factor()` |
+| Rate limit 10 votes/minute | `cast_vote()` |
+| Live move per tick: `sign(net) × min(2%, 0.25% × log10(1+|net|))` | `apply_tick()` |
+| Close: lock the price, write the daily candle, start the queue | `market_close()` |
+| Open: queued votes are applied as one gap, `min(15%, 2.5% × log10(1+|net|))` | `market_open()` |
+| Weekends: closed Sat/Sun, votes queue for Monday's gap | `market_status()` |
+| Company price = Σ model price × index weight | `company_quotes` view |
+| Buy/sell with $10,000 virtual cash, only while open | `place_trade()` |
 
-`net` is the account-age-weighted sum of rating weights, so the move grows with both sentiment
-and vote volume, with diminishing returns.
+`net` = Σ rating × account weight, so the move grows with both sentiment and vote volume.
+All writes go through these functions; Row Level Security makes tables read-only and votes private.
 
-## Next phases
-2. Move the engine to a Node service + Supabase (schema above), scheduled open/close jobs,
-   WebSocket price feed (`engine.subscribe` is the client contract).
-3. Portfolio page with value chart, weekly/all-time leaderboards.
-4. Model-release events, more streak rewards, polish.
+### Market clock and time zones
+Everyone trades on one shared exchange clock (`market_config.tz`, default `America/New_York`,
+8:00 AM–8:00 PM, Mon–Fri), so everybody sees the same price at the same moment. Every
+time in the UI (hours, countdowns, chart axis) is shown in the **viewer's own time zone**.
+Change the exchange zone or hours with
+`update market_config set tz='Asia/Kolkata', open_hour=8, close_hour=20;`.
+
+### Admin
+- Holidays/maintenance: `update market_config set force_status='afterhours';` (`null` = normal clock).
+- New model release: `insert into models (id, company_id, name, ticker, index_weight) values (...)`.
+  It lists at $100 and appears for everyone right away.
+- Tune price sensitivity: `tick_k`, `tick_cap`, `gap_k`, `gap_cap` in `market_config`.
+
+## Roadmap
+- Phase 3: portfolio page with value chart, weekly/all-time leaderboards.
+- Phase 4: model-release events, streak rewards, push "market open" notifications.

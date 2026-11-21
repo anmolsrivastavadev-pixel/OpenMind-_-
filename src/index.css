@@ -9,7 +9,7 @@ body {
   font-size: 13px;
   -webkit-tap-highlight-color: transparent;
 }
-.num { @apply font-mono; font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .up { @apply text-up; }
 .down { @apply text-down; }
 .panel { @apply bg-panel border border-line; }
@@ -21,8 +21,8 @@ body {
 .input { @apply w-full h-9 rounded bg-panel2 border border-line px-3 text-txt placeholder:text-mute outline-none focus:border-accent; }
 .label { @apply text-[11px] uppercase tracking-wider text-mute; }
 .scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
-.scroll-thin::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
-.scroll-thin { scrollbar-width: thin; scrollbar-color: #2a2e39 transparent; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+.scroll-thin { scrollbar-width: thin; scrollbar-color: #333 transparent; }
 
 @keyframes flash-up { from { background: rgba(8,153,129,.28); } to { background: transparent; } }
 @keyframes flash-down { from { background: rgba(242,54,69,.28); } to { background: transparent; } }
